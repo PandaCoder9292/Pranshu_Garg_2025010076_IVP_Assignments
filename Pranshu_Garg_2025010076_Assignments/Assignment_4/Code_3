@@ -1,0 +1,63 @@
+import urllib.request
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Fetch a random image from the internet and decode as grayscale
+url = "https://picsum.photos/500/500"
+req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+
+with urllib.request.urlopen(req) as response:
+    image_bytes = np.asarray(bytearray(response.read()), dtype=np.uint8)
+
+gray_img = cv2.imdecode(image_bytes, cv2.IMREAD_GRAYSCALE)
+if gray_img is None:
+    raise RuntimeError("Failed to download or decode the random image.")
+
+# Input source range [r1, r2] and target range [s1, s2] from the user
+r1 = int(input("Enter input lower intensity (r1, e.g., 80): "))
+r2 = int(input("Enter input upper intensity (r2, e.g., 120): "))
+s1 = int(input("Enter desired output lower intensity (s1, e.g., 50): "))
+s2 = int(input("Enter desired output upper intensity (s2, e.g., 150): "))
+
+if not (0 <= r1 < r2 <= 255) or not (0 <= s1 <= s2 <= 255):
+    raise ValueError("Ensure 0 <= r1 < r2 <= 255 and 0 <= s1 <= s2 <= 255.")
+
+# Apply 3-segment piecewise linear contrast stretching
+r = gray_img.astype(np.float32)
+s = np.zeros_like(r)
+
+# Segment 1: [0, r1) -> [0, s1)
+mask1 = r < r1
+if r1 > 0:
+    s[mask1] = (s1 / r1) * r[mask1]
+
+# Segment 2: [r1, r2] -> [s1, s2] (Target stretched region)
+mask2 = (r >= r1) & (r <= r2)
+s[mask2] = s1 + ((s2 - s1) / (r2 - r1)) * (r[mask2] - r1)
+
+# Segment 3: (r2, 255] -> (s2, 255]
+mask3 = r > r2
+if r2 < 255:
+    s[mask3] = s2 + ((255.0 - s2) / (255.0 - r2)) * (r[mask3] - r2)
+
+stretched_img = np.clip(s, 0, 255).astype(np.uint8)
+
+# Save output
+cv2.imwrite('output_contrast_stretching.jpg', stretched_img)
+
+# Display original vs. contrast-stretched image
+plt.figure(figsize=(10, 4))
+
+plt.subplot(1, 2, 1)
+plt.imshow(gray_img, cmap='gray', vmin=0, vmax=255)
+plt.title('Original Grayscale')
+plt.axis('off')
+
+plt.subplot(1, 2, 2)
+plt.imshow(stretched_img, cmap='gray', vmin=0, vmax=255)
+plt.title(f'Stretched [{r1}, {r2}] → [{s1}, {s2}]')
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
